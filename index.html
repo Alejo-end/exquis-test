@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exquis key test</title>
+<meta name="description" content="A free browser test for the Exquis controller: every pad, button, encoder and the pressure of each pad.">
+<style>
+  :root { --bg:#111; --fg:#ddd; --dim:#777; --bad:#6b1d1d; --ok:#1f8a3a; --part:#a07a12; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  main { max-width:940px; margin:0 auto; padding:24px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p { margin:6px 0; color:#aaa; }
+  button { background:#2a2a2a; color:var(--fg); border:1px solid #444; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; }
+  button:hover { background:#353535; }
+  button:disabled { opacity:.4; cursor:default; }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:16px 0; }
+  #status { color:var(--dim); }
+  .counts { display:flex; gap:24px; flex-wrap:wrap; margin:12px 0 20px; font-size:18px; }
+  .counts b { font-variant-numeric:tabular-nums; }
+  .layout { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .side { flex:1; min-width:260px; }
+  svg { display:block; }
+  .pad { fill:var(--bad); stroke:#000; stroke-width:2; }
+  .pad.ok { fill:var(--ok); }
+  .core { fill:#fff; pointer-events:none; }
+  .ring { fill:none; stroke:#ffd75e; stroke-width:3; pointer-events:none; }
+  .padnum { fill:#fff; font-size:11px; text-anchor:middle; pointer-events:none; }
+  .ctl { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; margin-bottom:16px; }
+  .chip { padding:8px; border-radius:6px; background:var(--bad); text-align:center; font-size:13px; }
+  .chip.ok { background:var(--ok); }
+  .chip.part { background:var(--part); }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 8px; }
+  .meter { height:16px; background:#222; border-radius:4px; overflow:hidden; margin:4px 0 2px; }
+  .meter > div { height:100%; width:0; background:#ffd75e; }
+  .row { display:flex; justify-content:space-between; font-size:13px; color:#aaa; font-variant-numeric:tabular-nums; }
+  #log { height:140px; overflow:auto; background:#0a0a0a; border:1px solid #222; padding:8px; font:12px/1.4 ui-monospace, monospace; color:#8a8; margin-top:20px; }
+  .note { font-size:13px; color:var(--dim); }
+  .tabs { display:flex; gap:6px; margin:4px 0 16px; }
+  .tabs button.on { background:#4a4a4a; border-color:#888; }
+  table { border-collapse:collapse; width:100%; table-layout:fixed; font-size:13px; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid #222; }
+  th { color:var(--dim); font-weight:normal; }
+  th:nth-child(-n+3) { width:12%; }
+  .mb { margin-bottom:2px; }
+  .mb { position:relative; height:12px; background:#222; border-radius:3px; overflow:hidden; }
+  .mb > div { position:absolute; top:0; bottom:0; background:#ffd75e; }
+  .mb.c::after { content:""; position:absolute; left:50%; top:0; bottom:0; width:1px; background:#666; }
+  .check { display:grid; grid-template-columns:1fr auto; gap:4px 16px; font-size:14px; max-width:560px; }
+  .check .ok { color:#5fd47c; } .check .no { color:#d46b6b; }
+  footer { margin-top:24px; font-size:12px; color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Exquis key test</h1>
+  <p>Press every pad and button, and turn every encoder both ways and push it. Each control turns from red to green, here and on the Exquis, when it sends. Then press each pad hard: a yellow ring marks a pad that reached full pressure.</p>
+  <p class="note">Needs Chrome or Edge, and the Exquis on USB. Nothing leaves your computer. Close the Exquis app and any music software first, because only one program can hold the Exquis.</p>
+
+  <div class="bar">
+    <button id="connect">Connect</button>
+    <button id="reset" disabled>Reset</button>
+    <button id="release" disabled>Give the Exquis back</button>
+    <span id="status">Not connected.</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button id="tabPads" class="on">Pads, buttons, encoders</button>
+    <button id="tabMpe">MPE</button>
+  </div>
+
+  <section id="mpesec" hidden>
+    <p>Here the Exquis plays as itself. Put it in MPE mode first: hold the encoder to change the mode, and the LED shows blue in MPE. Hit notes soft and hard for velocity. Then rock each finger without lifting it: tilt it left and right for X (pitch bend), tilt it toward you and away for Y (CC 74), and press down for Z (pressure). Each check turns green when the Exquis has sent its full range.</p>
+    <p class="note">If X stays at 0, the per-note pitch bend range in the Exquis's settings may be 0. If every velocity is the same, its velocity curve may be fixed.</p>
+    <h2>Fingers down</h2>
+    <table>
+      <thead><tr><th>Channel</th><th>Note</th><th>Velocity</th><th>X, pitch bend</th><th>Y, CC 74</th><th>Z, pressure</th></tr></thead>
+      <tbody id="voices"><tr><td colspan="6" class="note">Play a note.</td></tr></tbody>
+    </table>
+    <h2 style="margin-top:18px">Ranges reached</h2>
+    <div class="check" id="mpeChecks"></div>
+    <p class="note" id="mpeInfo" style="margin-top:12px"></p>
+  </section>
+
+  <section id="padsec">
+  <div class="counts">
+    <span>Pads <b id="cPads">0 / 61</b></span>
+    <span>Full pressure <b id="cPres">0 / 61</b></span>
+    <span>Buttons <b id="cBtns">0 / 8</b></span>
+    <span>Encoders <b id="cEnc">0 / 4</b></span>
+  </div>
+
+  <div class="layout">
+    <svg id="pads" width="420" height="560" viewBox="0 0 420 560" aria-label="The 61 pads"></svg>
+    <div class="side">
+      <h2>Pressure</h2>
+      <div class="row"><span id="pPad">No pad held</span><span id="pVal">0</span></div>
+      <div class="meter"><div id="pBar"></div></div>
+      <div class="row"><span>Velocity of the last hit</span><span id="pVel">-</span></div>
+      <div class="row"><span>Velocities seen, softest to hardest</span><span id="pVelR">-</span></div>
+      <p class="note">In this test the Exquis may send every hit at 127. Test velocity, X and Y in the MPE tab.</p>
+      <div class="row"><span>Full pressure counts from</span><span><input id="thr" type="number" min="1" max="127" value="120" style="width:56px"></span></div>
+      <div class="row"><span>Pressure message</span><span id="pKind">none yet</span></div>
+      <h2 style="margin-top:16px">Buttons</h2>
+      <div class="ctl" id="btns"></div>
+      <h2>Encoders (+, -, push)</h2>
+      <div class="ctl" id="encs"></div>
+      <h2>Missing</h2>
+      <p id="missing" class="note">Everything, so far.</p>
+      <p id="missingP" class="note"></p>
+    </div>
+  </div>
+
+  </section>
+
+  <div id="log" aria-label="Messages"></div>
+  <footer>An independent test page, not made by or affiliated with Intuitive Instruments. Exquis is their product. Free to use, no warranty.</footer>
+</main>
+<script>
+// The Exquis Developer Mode protocol. Pads 0..60 send notes on channel 16, the
+// buttons and the encoders send control changes, and a SysEx lights any LED.
+const CH = 15;                                  // channel 16, zero based
+const PADS = 61;
+const HEAD = [0xF0, 0x00, 0x21, 0x7E, 0x7F];
+const SETUP = 0x00, REFRESH = 0x03, LED = 0x04;
+const ZONES_ALL = 0x2B, ZONES_OFF = 0x00;       // pads, encoders, up/down, the other buttons
+const BTN = { 102: "Record", 103: "Loop", 104: "Clips", 105: "Play/Stop",
+              106: "Down", 107: "Up", 108: "Undo", 109: "Redo" };
+const ENC = 110, PUSH = 114, ENC_MID = 64;
+const RED = [50, 0, 0], AMBER = [100, 70, 0], GREEN = [0, 127, 0];
+
+let out = null, inp = null;
+let seen, up, dn, push, held, pres, pmax, last, kinds, vmin, vmax;
+let mode = "pads", ins = [], voice, mr;
+const thrEl = document.getElementById("thr");
+const thr = () => Math.max(1, Math.min(127, +thrEl.value || 120));
+
+function resetState() {
+  seen = new Set(); up = [0,0,0,0]; dn = [0,0,0,0]; push = [0,0,0,0]; held = new Set();
+  pres = new Array(PADS).fill(0); pmax = new Array(PADS).fill(0); last = -1; kinds = new Set();
+  vmin = 128; vmax = -1;
+  document.getElementById("pVelR").textContent = "-";
+  mpeReset();
+  document.getElementById("pVel").textContent = "-";
+  document.getElementById("pKind").textContent = "none yet";
+}
+resetState();
+
+// ---- the drawing -------------------------------------------------------
+// Pad 0 is the bottom left. Rows of 6 and 5 alternate up to pad 60 at the top right.
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("pads");
+const R = 30, DX = 2 * R * 0.95, DY = R * 1.62;
+const padEl = [], coreEl = [], ringEl = [], padPos = [];
+function padXY(id) {
+  const k = Math.floor(id / 11), rem = id % 11;
+  let row = 2 * k, col = rem;
+  if (rem >= 6) { row = 2 * k + 1; col = rem - 6; }
+  return [40 + col * DX + (row % 2 ? DX / 2 : 0), 560 - 36 - row * DY];
+}
+function hexPath(cx, cy, r) {
+  const p = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i - 90);
+    p.push((cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1));
+  }
+  return "M" + p.join("L") + "Z";
+}
+function el(name, attrs) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+for (let id = 0; id < PADS; id++) {
+  const [x, y] = padXY(id);
+  padPos[id] = [x, y];
+  padEl[id] = el("path", { d: hexPath(x, y, R * 0.98), class: "pad" });
+  ringEl[id] = el("path", { d: hexPath(x, y, R * 0.8), class: "ring", visibility: "hidden" });
+  coreEl[id] = el("path", { d: "", class: "core" });
+  const t = el("text", { x, y: y + 4, class: "padnum" });
+  t.textContent = id;
+  svg.append(padEl[id], ringEl[id], coreEl[id], t);
+}
+const btnEl = {};
+for (const id in BTN) {
+  const d = document.createElement("div");
+  d.className = "chip"; d.textContent = BTN[id];
+  document.getElementById("btns").append(d);
+  btnEl[id] = d;
+}
+const encEl = [];
+for (let n = 0; n < 4; n++) {
+  const d = document.createElement("div");
+  d.className = "chip";
+  document.getElementById("encs").append(d);
+  encEl[n] = d;
+}
+
+const encScore = n => up[n] + dn[n] + push[n];
+const encMarks = n => "Encoder " + (n + 1) + "  " + (up[n] ? "+" : "·") + (dn[n] ? "-" : "·") + (push[n] ? "P" : "·");
+
+function draw() {
+  const t = thr();
+  let p = 0, pf = 0;
+  for (let id = 0; id < PADS; id++) {
+    p += seen.has(id); pf += pmax[id] >= t;
+    padEl[id].setAttribute("class", "pad" + (seen.has(id) ? " ok" : ""));
+    ringEl[id].setAttribute("visibility", pmax[id] >= t ? "visible" : "hidden");
+    const [x, y] = padPos[id];
+    const v = held.has(id) ? Math.max(pres[id], 8) : 0;
+    coreEl[id].setAttribute("d", v ? hexPath(x, y, R * 0.75 * v / 127) : "");
+  }
+  let b = 0;
+  for (const id in BTN) { const ok = seen.has(+id); b += ok; btnEl[id].className = "chip" + (ok ? " ok" : ""); }
+  let e = 0;
+  for (let n = 0; n < 4; n++) {
+    const s = encScore(n); e += s === 3;
+    encEl[n].className = "chip" + (s === 3 ? " ok" : s ? " part" : "");
+    encEl[n].textContent = encMarks(n);
+  }
+  document.getElementById("cPads").textContent = p + " / " + PADS;
+  document.getElementById("cPres").textContent = pf + " / " + PADS;
+  document.getElementById("cBtns").textContent = b + " / 8";
+  document.getElementById("cEnc").textContent = e + " / 4";
+
+  const cur = last >= 0 && held.has(last) ? last : -1;
+  document.getElementById("pPad").textContent = cur >= 0 ? "Pad " + cur : "No pad held";
+  document.getElementById("pVal").textContent = cur >= 0 ? pres[cur] : 0;
+  document.getElementById("pBar").style.width = (cur >= 0 ? pres[cur] / 127 * 100 : 0) + "%";
+
+  const miss = [];
+  const mp = []; for (let id = 0; id < PADS; id++) if (!seen.has(id)) mp.push(id);
+  if (mp.length) miss.push("pads " + mp.join(", "));
+  const mb = Object.keys(BTN).filter(id => !seen.has(+id)).map(id => BTN[id]);
+  if (mb.length) miss.push(mb.join(", "));
+  for (let n = 0; n < 4; n++) {
+    const w = []; if (!up[n]) w.push("+"); if (!dn[n]) w.push("-"); if (!push[n]) w.push("push");
+    if (w.length) miss.push("encoder " + (n + 1) + " " + w.join(" "));
+  }
+  document.getElementById("missing").textContent = miss.length ? miss.join("; ") + "." : "Nothing. Every control works.";
+  const np = []; for (let id = 0; id < PADS; id++) if (seen.has(id) && pmax[id] < t) np.push(id + " (" + pmax[id] + ")");
+  document.getElementById("missingP").textContent = np.length ? "Not yet at full pressure, with the highest value so far: " + np.join(", ") + "." : "";
+}
+let drawQueued = false;
+function queueDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(frame); } }
+thrEl.oninput = queueDraw;
+
+// ---- the Exquis's LEDs -------------------------------------------------
+// A held pad glows from green to white with its pressure.
+function colorOf(id) {
+  if (id < PADS) {
+    if (held.has(id)) { const k = pres[id] / 127; return [Math.round(127 * k), 127, Math.round(127 * k)]; }
+    return seen.has(id) ? GREEN : RED;
+  }
+  if (BTN[id]) return seen.has(id) ? GREEN : RED;
+  if (id >= ENC && id < ENC + 4) { const s = encScore(id - ENC); return s === 3 ? GREEN : s ? AMBER : RED; }
+  return [0, 0, 0];
+}
+const sentPad = new Array(PADS).fill("");
+let ctlDirty = false;
+function paint(lo, hi) {
+  if (!out) return;
+  const m = [...HEAD, LED, lo];
+  for (let id = lo; id <= hi; id++) m.push(...colorOf(id), 0);
+  m.push(0xF7);
+  out.send(m);
+}
+function paintAll() { sentPad.fill(""); paintPads(); paint(102, 113); }
+// one SysEx a frame, from the first changed pad to the last
+function paintPads() {
+  let lo = -1, hi = -1;
+  for (let id = 0; id < PADS; id++) {
+    const k = colorOf(id).join();
+    if (k !== sentPad[id]) { sentPad[id] = k; if (lo < 0) lo = id; hi = id; }
+  }
+  if (lo >= 0) paint(lo, hi);
+}
+function frame() {
+  drawQueued = false;
+  if (mode === "mpe") { drawMpe(); return; }
+  draw();
+  paintPads();
+  if (ctlDirty) { ctlDirty = false; paint(102, 113); }
+}
+function setup(mask) { if (out) out.send([...HEAD, SETUP, mask, 0xF7]); }
+
+// ---- the messages ------------------------------------------------------
+const logEl = document.getElementById("log");
+let logN = 0;
+function log(s) {
+  const line = document.createElement("div");
+  line.textContent = s;
+  logEl.prepend(line);
+  if (++logN > 200) logEl.lastChild.remove();
+}
+const hex = a => Array.from(a, b => b.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+const KIND = { 0xA0: "poly pressure", 0xD0: "channel pressure", 0xE0: "pitch bend" };
+function noteKind(k) {
+  if (kinds.has(k)) return;
+  kinds.add(k);
+  document.getElementById("pKind").textContent = [...kinds].join(", ");
+}
+function press(id, v) { pres[id] = v; if (v > pmax[id]) pmax[id] = v; }
+
+function onMessage(ev) {
+  const d = ev.data, s = d[0], a = d[1], v = d[2];
+  if (mode === "mpe") { onMpe(d); return; }
+  if (ev.target !== inp) return;                 // the pad test reads the first port only
+  if (s === 0xF0) {                              // the Exquis asks for a repaint after its menu
+    if (d[5] === REFRESH) paintAll();
+    return;
+  }
+  const kind = s & 0xF0;
+  if (kind !== 0xA0 && kind !== 0xD0) log(hex(d));   // pressure is too many to list
+  if ((s & 0x0F) !== CH) { queueDraw(); return; }
+  if (kind === 0x90 && v > 0 && a < PADS) {
+    seen.add(a); held.add(a); last = a;
+    document.getElementById("pVel").textContent = v;
+    vmin = Math.min(vmin, v); vmax = Math.max(vmax, v);
+    document.getElementById("pVelR").textContent = vmin + " to " + vmax;
+    press(a, 0);
+  } else if ((kind === 0x80 || (kind === 0x90 && v === 0)) && a < PADS) {
+    held.delete(a); pres[a] = 0;
+  } else if (kind === 0xA0 && a < PADS) {          // the pressure of one pad
+    noteKind(KIND[kind]); press(a, v); last = a;
+  } else if (kind === 0xD0) {                      // one pressure for the channel: the last pad
+    noteKind(KIND[kind]); if (last >= 0 && held.has(last)) press(last, a);
+  } else if (kind === 0xB0) {
+    if (BTN[a] && v > 0) { if (!seen.has(a)) { seen.add(a); ctlDirty = true; } }
+    else if (a >= ENC && a < ENC + 4) {
+      const n = a - ENC;
+      if (v > ENC_MID && !up[n]) { up[n] = 1; ctlDirty = true; }
+      if (v < ENC_MID && !dn[n]) { dn[n] = 1; ctlDirty = true; }
+    } else if (a >= PUSH && a < PUSH + 4 && v > 0) {
+      const n = a - PUSH;
+      if (!push[n]) { push[n] = 1; ctlDirty = true; }
+    }
+  }
+  queueDraw();
+}
+
+// ---- MPE ---------------------------------------------------------------
+// Each finger gets its own channel: its note, its pitch bend (X), CC 74 (Y)
+// and its channel pressure (Z). Some controllers send poly pressure instead.
+const NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const noteName = n => NAMES[n % 12] + (Math.floor(n / 12) - 1);
+function mpeReset() {
+  voice = {};
+  mr = { vel: [128, -1], x: [8192, -8193], y: [128, -1], z: [128, -1], notes: new Set(), chans: new Set(),
+         zKind: new Set(), other: new Map(), count: { on: 0, bend: 0, y: 0, z: 0 }, vels: new Set() };
+}
+const widen = (r, v) => { if (v < r[0]) r[0] = v; if (v > r[1]) r[1] = v; };
+function onMpe(d) {
+  const s = d[0], a = d[1], v = d[2], kind = s & 0xF0, ch = (s & 0x0F) + 1;
+  if (s >= 0xF0) return;
+  if (kind !== 0xA0 && kind !== 0xD0 && kind !== 0xE0 && !(kind === 0xB0 && a === 74)) log(hex(d));
+  const vc = voice[ch];
+  if (kind === 0x90 && v > 0) {
+    voice[ch] = { note: a, vel: v, x: 0, y: null, z: 0, on: true };
+    mr.notes.add(a); mr.chans.add(ch); widen(mr.vel, v); mr.count.on++; mr.vels.add(v);
+  } else if (kind === 0x80 || (kind === 0x90 && v === 0)) {
+    if (vc && vc.note === a) vc.on = false;
+  } else if (kind === 0xE0) {
+    const x = ((v << 7) | a) - 8192; widen(mr.x, x); mr.count.bend++;
+    if (vc) vc.x = x;
+  } else if (kind === 0xB0 && a === 74) {
+    widen(mr.y, v); mr.count.y++; if (vc) vc.y = v;
+  } else if (kind === 0xD0) {
+    mr.zKind.add("channel pressure"); widen(mr.z, a); mr.count.z++; if (vc) vc.z = a;
+  } else if (kind === 0xA0) {
+    mr.zKind.add("poly pressure"); widen(mr.z, v); mr.count.z++; if (vc && vc.note === a) vc.z = v;
+  } else {
+    const k = kind === 0xB0 ? "CC " + a : "status " + hex([kind]);
+    mr.other.set(k, (mr.other.get(k) || 0) + 1);
+  }
+  queueDraw();
+}
+function bar(v, lo, hi, centred) {
+  const f = (v - lo) / (hi - lo);
+  const style = centred
+    ? (f >= 0.5 ? `left:50%;width:${(f - 0.5) * 100}%` : `left:${f * 100}%;width:${(0.5 - f) * 100}%`)
+    : `left:0;width:${f * 100}%`;
+  return `<div class="mb${centred ? " c" : ""}"><div style="${style}"></div></div>`;
+}
+function drawMpe() {
+  const rows = Object.entries(voice).filter(([, vc]) => vc.on);
+  // X is drawn against the largest bend seen: the Exquis's per-note bend range
+  // can be a small part of the 14-bit scale (1 of 48 sends at most 171)
+  const xs = Math.max(1, -mr.x[0], mr.x[1]);
+  const xPct = Math.round(xs / 8192 * 100);
+  document.getElementById("voices").innerHTML = rows.length ? rows.map(([ch, vc]) =>
+    `<tr><td>${ch}</td><td>${noteName(vc.note)} (${vc.note})</td><td>${vc.vel}</td>` +
+    `<td class="mv">${bar(vc.x, -xs, xs, true)}${vc.x}</td>` +
+    `<td class="mv">${vc.y === null ? "-" : bar(vc.y, 0, 127) + vc.y}</td>` +
+    `<td class="mv">${bar(vc.z, 0, 127)}${vc.z}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="note">Play a note.</td></tr>`;
+  const r = (x, lo, hi) => x[1] < x[0] ? "nothing yet" : x[0] + " to " + x[1];
+  const checks = [
+    ["Velocity, soft to hard (from 20 or less to 120 or more)", mr.vel[0] <= 20 && mr.vel[1] >= 120, r(mr.vel)],
+    ["X, both ways (pitch bend)", mr.x[0] < 0 && mr.x[1] > 0, r(mr.x) + (mr.x[1] >= mr.x[0] ? ", " + xPct + "% of the bend scale" : "")],
+    ["Y, the whole way (CC 74)", mr.y[0] <= 5 && mr.y[1] >= 122, r(mr.y)],
+    ["Z, full pressure", mr.z[1] >= 120, r(mr.z)],
+    ["More than one finger at once (separate channels)", mr.chans.size > 1, mr.chans.size + " channels"],
+  ];
+  document.getElementById("mpeChecks").innerHTML = checks.map(([t, ok, val]) =>
+    `<span class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"} ${t}</span><span>${val}</span>`).join("");
+  const other = [...mr.other].map(([k, n]) => k + " (" + n + ")").join(", ");
+  document.getElementById("mpeInfo").textContent =
+    "Received: " + mr.count.on + " notes, " + mr.count.bend + " pitch bend (X), " + mr.count.y + " CC 74 (Y), " +
+    mr.count.z + " pressure (Z). Velocities: " + (mr.vels.size ? [...mr.vels].sort((a, b) => a - b).slice(0, 24).join(", ") + (mr.vels.size > 24 ? " and more" : "") : "none") + ". " +
+    mr.notes.size + " different notes played. Channels: " + ([...mr.chans].sort((a, b) => a - b).join(", ") || "none") +
+    ". Pressure arrives as: " + ([...mr.zKind].join(", ") || "nothing yet") +
+    "." + (other ? " Other messages: " + other + "." : "") +
+    (mr.x[1] > 0 && xs < 4096 ? " X reaches only " + xPct + "% of the pitch bend scale: the Exquis's per-note pitch bend range is set low. The bar is scaled to the largest bend seen." : "");
+}
+function setMode(m) {
+  mode = m;
+  document.getElementById("padsec").hidden = m !== "pads";
+  document.getElementById("mpesec").hidden = m !== "mpe";
+  document.getElementById("tabPads").className = m === "pads" ? "on" : "";
+  document.getElementById("tabMpe").className = m === "mpe" ? "on" : "";
+  if (out) { if (m === "pads") { setup(ZONES_ALL); paintAll(); } else setup(ZONES_OFF); }
+  queueDraw();
+}
+document.getElementById("tabPads").onclick = () => setMode("pads");
+document.getElementById("tabMpe").onclick = () => setMode("mpe");
+
+// ---- connect -----------------------------------------------------------
+const statusEl = document.getElementById("status");
+async function connect() {
+  if (!navigator.requestMIDIAccess) { statusEl.textContent = "This browser has no Web MIDI. Use Chrome or Edge."; return; }
+  let access;
+  try { access = await navigator.requestMIDIAccess({ sysex: true }); }
+  catch (e) { statusEl.textContent = "MIDI access was refused: " + e.message; return; }
+  const isEx = p => /exquis/i.test(p.name || "");
+  // The Exquis shows two ports. The first one carries Developer Mode.
+  ins = [...access.inputs.values()].filter(isEx);
+  const outs = [...access.outputs.values()].filter(isEx);
+  if (!ins.length || !outs.length) {
+    const names = [...access.inputs.values()].map(p => p.name).join(", ") || "none";
+    statusEl.textContent = "No Exquis found. MIDI inputs: " + names + ".";
+    return;
+  }
+  inp = ins[0]; out = outs[0];
+  for (const i of ins) i.onmidimessage = onMessage;
+  setMode(mode);
+  statusEl.textContent = "Connected to " + inp.name + ".";
+  document.getElementById("reset").disabled = false;
+  document.getElementById("release").disabled = false;
+  access.onstatechange = e => {
+    if (e.port.state === "disconnected" && (e.port === inp || e.port === out)) {
+      statusEl.textContent = "The Exquis was unplugged. Plug it in and press Connect.";
+      inp = out = null;
+    }
+  };
+}
+function release() {
+  setup(ZONES_OFF);
+  for (const i of ins) i.onmidimessage = null;
+  inp = out = null;
+  statusEl.textContent = "Released. The Exquis is its own instrument again.";
+  document.getElementById("release").disabled = true;
+}
+document.getElementById("connect").onclick = connect;
+document.getElementById("reset").onclick = () => { resetState(); if (mode === "pads") paintAll(); queueDraw(); };
+document.getElementById("release").onclick = release;
+window.addEventListener("beforeunload", () => { if (out) setup(ZONES_OFF); });
+draw();
+</script>
+</body>
+</html>
